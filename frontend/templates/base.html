@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}StockSense{% endblock %} — AI Stock Analysis</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<!-- ── Navigation ─────────────────────────────────────────────────────────── -->
+<nav class="navbar">
+  <a href="{{ url_for('views.dashboard') }}" class="navbar-brand">
+    <div class="logo-icon">📈</div>
+    <div>
+      <div class="brand-name">StockSense</div>
+      <div class="brand-tag">AI · NSE · MULTI-AGENT</div>
+    </div>
+  </a>
+
+  <div class="nav-links">
+    <a href="{{ url_for('views.dashboard') }}"
+       class="nav-link {% if request.endpoint == 'views.dashboard' %}active{% endif %}">
+      <span>Dashboard</span>
+    </a>
+    <a href="{{ url_for('views.chart_terminal') }}"
+       class="nav-link {% if request.endpoint == 'views.chart_terminal' %}active{% endif %}">
+      <span>Chart Terminal</span>
+    </a>
+    <a href="{{ url_for('views.screener') }}"
+       class="nav-link {% if request.endpoint == 'views.screener' %}active{% endif %}">
+      <span>Stock Screener</span>
+    </a>
+    <a href="{{ url_for('views.sentiment_view') }}"
+       class="nav-link {% if request.endpoint == 'views.sentiment_view' %}active{% endif %}">
+      <span>Sentiment</span>
+    </a>
+    <a href="{{ url_for('views.signals') }}"
+       class="nav-link {% if request.endpoint == 'views.signals' %}active{% endif %}">
+      <span>Trade Signals</span>
+    </a>
+  </div>
+
+  <div class="navbar-right">
+    <div class="market-badge" id="market-status">
+      <span class="dot"></span>
+      <span>NSE</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Page content ────────────────────────────────────────────────────────── -->
+<div class="page-wrapper">
+  {% block content %}{% endblock %}
+</div>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block extra_js %}{% endblock %}
+
+</body>
+</html>

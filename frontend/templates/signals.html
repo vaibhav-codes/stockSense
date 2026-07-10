@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Trade Signals{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header flex-between" style="margin-top:16px">
+    <div>
+      <h1 class="page-title">Trade Signals</h1>
+      <p class="page-subtitle">AI-ranked stocks to trade tomorrow — filter by strategy</p>
+    </div>
+  </div>
+
+  <!-- Strategy selector -->
+  <div class="grid-3" style="margin-bottom:24px">
+    <div class="metric-tile strategy-card active-strategy" onclick="setStrategy('long_term', this)"
+         id="strat-long_term" style="cursor:pointer;border-color:rgba(0,212,170,0.3)">
+      <div style="font-size:22px;margin-bottom:6px">📈</div>
+      <div class="metric-label">Long-Term</div>
+      <div class="text-secondary text-sm mt-4">Sentiment + fundamental momentum. Hold weeks–months.</div>
+    </div>
+    <div class="metric-tile strategy-card" onclick="setStrategy('swing_trading', this)"
+         id="strat-swing_trading" style="cursor:pointer">
+      <div style="font-size:22px;margin-bottom:6px">🔄</div>
+      <div class="metric-label">Swing Trading</div>
+      <div class="text-secondary text-sm mt-4">TA confluence + volume. Hold 3–10 days.</div>
+    </div>
+    <div class="metric-tile strategy-card" onclick="setStrategy('short_term', this)"
+         id="strat-short_term" style="cursor:pointer">
+      <div style="font-size:22px;margin-bottom:6px">⚡</div>
+      <div class="metric-label">Short-Term</div>
+      <div class="text-secondary text-sm mt-4">Momentum + volume spikes. Hold 1–3 days.</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body" style="padding:14px 20px">
+      <div class="flex" style="gap:14px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="metric-label" style="display:block;margin-bottom:4px">Top N stocks</label>
+          <select id="topn-select" class="form-control" style="width:100px">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="15">Top 15</option>
+          </select>
+        </div>
+        <div>
+          <label class="metric-label" style="display:block;margin-bottom:4px">Signal filter</label>
+          <select id="signal-filter" class="form-control" style="width:160px">
+            <option value="all">All Signals</option>
+            <option value="buy">Buy & Strong Buy</option>
+            <option value="sell">Sell & Strong Sell</option>
+          </select>
+        </div>
+        <div style="margin-top:20px">
+          <button class="btn btn-primary" id="run-btn" onclick="runSignals()">
+            🎯 Generate Signals
+          </button>
+        </div>
+        <div id="signal-status" class="text-secondary text-sm" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Signal cards -->
+  <div id="signal-results">
+    <div class="loading-overlay">
+      <div class="text-secondary text-sm">Select a strategy and click Generate Signals</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.strategy-card { transition: var(--transition); }
+.strategy-card:hover { border-color: var(--border-accent) !important; }
+.active-strategy { border-color: rgba(0,212,170,0.4) !important; background: rgba(0,212,170,0.05) !important; }
+
+.signal-card {
+  background:    var(--bg-card);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding:       20px;
+  transition:    var(--transition);
+}
+.signal-card:hover { border-color: var(--border-accent); }
+.signal-card.buy-card  { border-left: 3px solid #00d4aa; }
+.signal-card.sell-card { border-left: 3px solid #fc4a4a; }
+.signal-card.hold-card { border-left: 3px solid #f6ad55; }
+
+.strat-pill {
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:4px;
+  font-size:10px;
+  font-weight:600;
+  margin:2px;
+  font-family:var(--font-data);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentStrategy = 'long_term';
+
+function setStrategy(strategy, el) {
+  currentStrategy = strategy;
+  document.querySelectorAll('.strategy-card').forEach(c => c.classList.remove('active-strategy'));
+  el.classList.add('active-strategy');
+}
+
+async function runSignals() {
+  const topN   = parseInt(document.getElementById('topn-select').value);
+  const filter = document.getElementById('signal-filter').value;
+  const resultsEl = document.getElementById('signal-results');
+  const statusEl  = document.getElementById('signal-status');
+  const btn       = document.getElementById('run-btn');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  showLoading(resultsEl, `Screening top ${topN} stocks for ${currentStrategy.replace(/_/g,' ')}…`);
+
+  const tickers = [
+    'RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','ICICIBANK.NS',
+    'HINDUNILVR.NS','ITC.NS','SBIN.NS','BHARTIARTL.NS','KOTAKBANK.NS',
+    'LT.NS','BAJFINANCE.NS','HCLTECH.NS','WIPRO.NS','ASIANPAINT.NS',
+    'AXISBANK.NS','MARUTI.NS','SUNPHARMA.NS','TITAN.NS','ULTRACEMCO.NS',
+  ];
+
+  try {
+    const data = await API.screener({ tickers, strategy: currentStrategy, top_n: topN });
+    let rows   = data.results || [];
+
+    // Apply signal filter
+    if (filter === 'buy') {
+      rows = rows.filter(r => r.signal?.includes('Buy'));
+    } else if (filter === 'sell') {
+      rows = rows.filter(r => r.signal?.includes('Sell'));
+    }
+
+    statusEl.textContent = `${rows.length} signals generated`;
+    btn.disabled    = false;
+    btn.textContent = '🎯 Generate Signals';
+
+    if (!rows.length) {
+      resultsEl.innerHTML = '<div class="loading-overlay"><div class="text-muted">No signals match your filters</div></div>';
+      return;
+    }
+
+    const scoreKey = currentStrategy === 'long_term' ? 'long_term_score'
+      : currentStrategy === 'swing_trading' ? 'swing_trading_score' : 'short_term_score';
+
+    resultsEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+        ${rows.map((r, i) => {
+          const score    = r[scoreKey] || 0;
+          const sigClass = r.signal?.includes('Buy') ? 'buy-card' : r.signal?.includes('Sell') ? 'sell-card' : 'hold-card';
+          const sentPct  = ((r.sentiment_score||0) + 1) / 2 * 100;
+
+          return `
+          <div class="signal-card ${sigClass}">
+            <div class="flex-between" style="margin-bottom:14px">
+              <div class="flex-center" style="gap:8px">
+                <span class="text-muted mono text-sm">#${i+1}</span>
+                <span class="ticker-tag">${r.ticker}</span>
+              </div>
+              ${signalBadge(r.signal)}
+            </div>
+
+            <div class="grid-2" style="gap:12px;margin-bottom:14px">
+              <div>
+                <div class="metric-label">Price</div>
+                <div class="mono fw-600">${fmtPrice(r.price)}</div>
+                <div class="text-sm">${fmtChange(r.change_pct)}</div>
+              </div>
+              <div>
+                <div class="metric-label">Strategy Score</div>
+                <div class="mono fw-600">${score.toFixed(1)}</div>
+                <div class="score-bar" style="margin-top:6px">
+                  <div class="score-bar-fill" style="width:${score}%;background:${scoreColor(score)}"></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-bottom:12px">
+              <div class="metric-label" style="margin-bottom:6px">Sub-scores</div>
+              <div class="flex-between text-xs" style="margin-bottom:3px">
+                <span class="text-muted">Technical</span>
+                <span class="mono">${(r.ta_score||0).toFixed(0)}/100</span>
+              </div>
+              <div class="flex-between text-xs" style="margin-bottom:3px">
+                <span class="text-muted">Sentiment</span>
+                <span>${fmtSentiment(r.sentiment_score)}</span>
+              </div>
+              <div class="flex-between text-xs">
+                <span class="text-muted">Volume</span>
+                <span class="mono">${(r.volume_score||0).toFixed(0)}/100</span>
+              </div>
+            </div>
+
+            <div class="flex-between" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <span class="health-bar ${(r.review_health||'').toLowerCase()}" style="padding:2px 8px;font-size:10px">
+                ${r.review_health||'—'}
+              </span>
+              <div>
+                <a href="/chart?ticker=${r.ticker}" class="btn btn-ghost btn-sm" style="margin-right:6px">Chart</a>
+                <a href="/sentiment?ticker=${r.ticker}" class="btn btn-ghost btn-sm">Sentiment</a>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = '🎯 Generate Signals';
+    showError(resultsEl, `Error: ${e.message}`);
+    Toast.error(e.message);
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Sentiment Analysis{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header flex-between" style="margin-top:16px">
+    <div>
+      <h1 class="page-title">Sentiment Analysis</h1>
+      <p class="page-subtitle">FinBERT-powered news sentiment with SHAP explainability</p>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body" style="padding:14px 20px">
+      <div class="flex" style="gap:12px;align-items:center">
+        <div style="position:relative;flex:1;max-width:320px">
+          <input id="ticker-input" class="form-control" placeholder="Ticker e.g. INFY.NS"
+                 onkeydown="if(event.key==='Enter') runSentiment()">
+          <div id="ticker-suggestions" class="suggestions-dropdown"></div>
+        </div>
+        <button class="btn btn-primary" onclick="runSentiment()">Analyse Sentiment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="sent-results" style="display:none">
+    <div class="grid-2" style="margin-bottom:20px;grid-template-columns:1fr 1fr">
+
+      <!-- Sentiment score -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">Sentiment Score</span></div>
+        <div class="card-body">
+          <div class="flex-center" style="gap:20px;flex-wrap:wrap">
+            <div>
+              <div class="metric-label">Overall Score</div>
+              <div class="metric-value mono" id="sent-score-display" style="font-size:36px">—</div>
+              <div id="sent-label" style="margin-top:8px"></div>
+            </div>
+            <div style="flex:1">
+              <div class="metric-label" style="margin-bottom:8px">Breakdown</div>
+              <div id="sent-breakdown"></div>
+            </div>
+          </div>
+          <div style="margin-top:16px">
+            <div class="metric-label" style="margin-bottom:6px">Model</div>
+            <div id="sent-model-tag" class="ticker-tag" style="font-size:11px">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Article breakdown -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">Article Sentiment Breakdown</span></div>
+        <div class="card-body">
+          <div id="breakdown-bars" style="margin-bottom:12px"></div>
+          <div id="articles-list" style="max-height:200px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Word importance -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Word Importance (Pseudo-SHAP)</span></div>
+      <div class="card-body" style="padding:10px">
+        <div id="shap-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="sent-placeholder" class="loading-overlay">
+    <div class="text-secondary text-sm">Enter a ticker and click Analyse Sentiment</div>
+  </div>
+</div>
+
+<style>
+.suggestions-dropdown{position:absolute;top:100%;left:0;right:0;background:#131927;border:1px solid rgba(255,255,255,0.1);border-radius:6px;margin-top:4px;z-index:100;overflow:hidden}
+.suggestion-item{padding:8px 12px;font-family:var(--font-data);font-size:12px;color:var(--text-primary);cursor:pointer}
+.suggestion-item:hover{background:var(--bg-hover);color:var(--accent-green)}
+.article-item{padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.article-item:last-child{border-bottom:none}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function runSentiment() {
+  const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+  if (!ticker) { Toast.warning('Enter a ticker'); return; }
+
+  document.getElementById('sent-placeholder').style.display = 'flex';
+  document.getElementById('sent-results').style.display = 'none';
+  showLoading(document.getElementById('sent-placeholder'), `Analysing sentiment for ${ticker}…`);
+
+  try {
+    const out  = await API.sentiment(ticker);
+    const data = out.data || {};
+    const bd   = data.breakdown || {};
+
+    document.getElementById('sent-placeholder').style.display = 'none';
+    document.getElementById('sent-results').style.display = 'block';
+
+    // Score display
+    const score = out.score || 0;
+    const color = score > 0.1 ? '#00d4aa' : score < -0.1 ? '#fc4a4a' : '#f6ad55';
+    document.getElementById('sent-score-display').innerHTML =
+      `<span style="color:${color}">${score >= 0 ? '+' : ''}${score.toFixed(3)}</span>`;
+    document.getElementById('sent-label').innerHTML = signalBadge(out.label);
+    document.getElementById('sent-model-tag').textContent = data.model_used || 'finbert';
+
+    // Breakdown
+    const total = bd.total || 1;
+    document.getElementById('sent-breakdown').innerHTML = [
+      ['Positive', bd.positive_count||0, '#00d4aa'],
+      ['Negative', bd.negative_count||0, '#fc4a4a'],
+      ['Neutral',  bd.neutral_count||0,  '#8896b0'],
+    ].map(([label, count, color]) => `
+      <div style="margin-bottom:8px">
+        <div class="flex-between" style="margin-bottom:4px">
+          <span class="text-secondary text-xs">${label}</span>
+          <span class="mono text-xs">${count} / ${total}</span>
+        </div>
+        <div class="score-bar">
+          <div class="score-bar-fill" style="width:${(count/total*100).toFixed(1)}%;background:${color}"></div>
+        </div>
+      </div>`).join('');
+
+    // Article list
+    const articles = data.articles || [];
+    const artEl = document.getElementById('articles-list');
+    artEl.innerHTML = articles.slice(0,8).map(a => {
+      const s = a.sentiment || {};
+      const aColor = s.label === 'positive' ? '#00d4aa' : s.label === 'negative' ? '#fc4a4a' : '#8896b0';
+      return `
+        <div class="article-item">
+          <div class="flex-between">
+            <span style="flex:1;color:var(--text-primary)">${a.title?.slice(0,70) || ''}…</span>
+            <span style="color:${aColor};font-family:var(--font-data);font-size:11px;margin-left:8px;flex-shrink:0">
+              ${s.label || '?'}
+            </span>
+          </div>
+          <div class="text-xs text-muted" style="margin-top:2px">${a.source || ''}</div>
+        </div>`;
+    }).join('');
+
+    // SHAP word importance
+    renderWordImportance(data.word_importance || [], 'shap-container');
+
+  } catch(e) {
+    document.getElementById('sent-placeholder').style.display = 'flex';
+    document.getElementById('sent-placeholder').innerHTML =
+      `<div class="text-secondary text-sm">Error: ${e.message}</div>`;
+    Toast.error(e.message);
+  }
+}
+</script>
+{% endblock %}

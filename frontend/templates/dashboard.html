@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <!-- Page header -->
+  <div class="page-header flex-between" style="margin-top:16px">
+    <div>
+      <h1 class="page-title">Dashboard</h1>
+      <p class="page-subtitle">Real-time multi-agent analysis · Indian equity markets</p>
+    </div>
+    <div class="flex" style="gap:10px">
+      <button class="btn btn-ghost btn-sm" onclick="refreshDashboard()">↻ Refresh</button>
+      <span id="last-updated" class="text-muted text-xs flex-center" style="gap:4px">
+        Last updated: —
+      </span>
+    </div>
+  </div>
+
+  <!-- Quick analysis bar -->
+  <div class="card mb-16" style="margin-bottom:20px">
+    <div class="card-body" style="padding:14px 20px">
+      <div class="flex" style="gap:12px;align-items:center">
+        <span class="text-secondary text-sm fw-600">Quick Analyse:</span>
+        <div style="position:relative;flex:1;max-width:320px">
+          <input id="ticker-input" class="form-control" placeholder="Enter ticker e.g. RELIANCE.NS"
+                 onkeydown="if(event.key==='Enter') runQuickAnalysis()" style="padding-right:40px">
+          <div id="ticker-suggestions" class="suggestions-dropdown"></div>
+        </div>
+        <select id="period-select" class="form-control" style="width:100px">
+          <option value="3mo">3 Months</option>
+          <option value="6mo" selected>6 Months</option>
+          <option value="1y">1 Year</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="runQuickAnalysis()">Analyse</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result area (populated after analysis) -->
+  <div id="analysis-result" style="display:none;margin-bottom:24px">
+
+    <!-- Top metrics row -->
+    <div class="metrics-grid" id="metrics-row" style="margin-bottom:20px"></div>
+
+    <!-- Main content grid -->
+    <div class="grid-2" style="margin-bottom:20px">
+
+      <!-- Agent scores card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Agent Scores</span>
+          <div id="reviewer-health" class="health-bar healthy" style="padding:4px 10px;font-size:11px">
+            <span>● HEALTHY</span>
+          </div>
+        </div>
+        <div id="agent-scores-body" class="card-body"></div>
+      </div>
+
+      <!-- Radar chart -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Score Overview</span>
+        </div>
+        <div class="card-body" style="padding:10px">
+          <div id="radar-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strategy signals -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title">Strategy Signals</span>
+      </div>
+      <div id="strategy-body" class="card-body">
+        <div class="grid-3" id="strategy-grid"></div>
+      </div>
+    </div>
+
+    <!-- Reviewer details -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Reviewer Agent — Validation Report</span>
+      </div>
+      <div id="reviewer-body" class="card-body"></div>
+    </div>
+  </div>
+
+  <!-- Default state — Nifty overview -->
+  <div id="default-content">
+    <div class="grid-4" style="margin-bottom:24px" id="nifty-tiles">
+      <div class="metric-tile">
+        <div class="metric-label">Nifty 50</div>
+        <div class="metric-value mono" id="nifty-val">—</div>
+        <div class="metric-sub" id="nifty-chg">Loading…</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Bank Nifty</div>
+        <div class="metric-value mono" id="bnifty-val">—</div>
+        <div class="metric-sub" id="bnifty-chg">Loading…</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Sensex</div>
+        <div class="metric-value mono" id="sensex-val">—</div>
+        <div class="metric-sub" id="sensex-chg">Loading…</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Nifty IT</div>
+        <div class="metric-value mono" id="niftyit-val">—</div>
+        <div class="metric-sub" id="niftyit-chg">Loading…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">How to get started</span>
+      </div>
+      <div class="card-body">
+        <div class="grid-3" style="gap:16px">
+          <a href="/screener" class="metric-tile" style="text-decoration:none;cursor:pointer">
+            <div style="font-size:24px;margin-bottom:10px">🔍</div>
+            <div class="metric-label">Stock Screener</div>
+            <div class="text-secondary text-sm mt-4">Screen Nifty 50 and find top-ranked stocks by strategy</div>
+          </a>
+          <a href="/chart" class="metric-tile" style="text-decoration:none;cursor:pointer">
+            <div style="font-size:24px;margin-bottom:10px">📊</div>
+            <div class="metric-label">Chart Terminal</div>
+            <div class="text-secondary text-sm mt-4">Interactive candlestick charts with TA indicator overlays</div>
+          </a>
+          <a href="/signals" class="metric-tile" style="text-decoration:none;cursor:pointer">
+            <div style="font-size:24px;margin-bottom:10px">🎯</div>
+            <div class="metric-label">Trade Signals</div>
+            <div class="text-secondary text-sm mt-4">AI-generated signals ranked by strategy and sentiment</div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ticker suggestion dropdown style -->
+<style>
+.suggestions-dropdown {
+  position:   absolute;
+  top:        100%;
+  left:       0;
+  right:      0;
+  background: #131927;
+  border:     1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin-top: 4px;
+  z-index:    100;
+  overflow:   hidden;
+}
+.suggestion-item {
+  padding:     8px 12px;
+  font-family: var(--font-data);
+  font-size:   12px;
+  color:       var(--text-primary);
+  cursor:      pointer;
+  transition:  background 0.1s;
+}
+.suggestion-item:hover { background: var(--bg-hover); color: var(--accent-green); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Quick analysis ────────────────────────────────────────────────────────────
+async function runQuickAnalysis() {
+  const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+  if (!ticker) { Toast.warning('Please enter a ticker symbol'); return; }
+
+  const resultArea    = document.getElementById('analysis-result');
+  const defaultArea   = document.getElementById('default-content');
+  const metricsRow    = document.getElementById('metrics-row');
+  const agentScores   = document.getElementById('agent-scores-body');
+  const strategyGrid  = document.getElementById('strategy-grid');
+  const reviewerBody  = document.getElementById('reviewer-body');
+
+  defaultArea.style.display = 'none';
+  resultArea.style.display  = 'block';
+  showLoading(metricsRow, `Running full pipeline for ${ticker}…`);
+  agentScores.innerHTML = '';
+  strategyGrid.innerHTML = '';
+
+  try {
+    const state = await API.pipeline(ticker);
+
+    // ── Metrics row ───────────────────────────────────────────────────────
+    const signal  = state.signal || {};
+    const ta      = state.reviewed_outputs?.TechnicalAnalysis || {};
+    const sent    = state.reviewed_outputs?.SentimentAnalysis || {};
+    const vol     = state.reviewed_outputs?.VolumeAnalysis    || {};
+    const price   = ta.data?.price || {};
+
+    metricsRow.innerHTML = `
+      <div class="metric-tile">
+        <div class="metric-label">Signal</div>
+        <div class="metric-value" style="font-size:17px;margin-top:8px">
+          ${signalBadge(signal.label)}
+        </div>
+        <div class="metric-sub mono">${(signal.score||0).toFixed(1)} / 100</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Price</div>
+        <div class="metric-value mono">${fmtPrice(price.current)}</div>
+        <div class="metric-sub">${fmtChange(price.change_pct)}</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">TA Score</div>
+        <div class="metric-value mono">${(ta.score||0).toFixed(0)}</div>
+        <div class="metric-sub">${ta.label || '—'}</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Sentiment</div>
+        <div class="metric-value" style="font-size:18px">${fmtSentiment(sent.score)}</div>
+        <div class="metric-sub">${sent.label || '—'}</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Volume</div>
+        <div class="metric-value mono">${(vol.score||0).toFixed(0)}</div>
+        <div class="metric-sub">${vol.label || '—'}</div>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-label">Duration</div>
+        <div class="metric-value mono">${state.duration_seconds || '—'}s</div>
+        <div class="metric-sub">Pipeline time</div>
+      </div>`;
+
+    // ── Agent scores ──────────────────────────────────────────────────────
+    const agents = state.reviewed_outputs || {};
+    agentScores.innerHTML = Object.entries(agents).map(([name, out]) => `
+      <div style="margin-bottom:14px">
+        <div class="flex-between" style="margin-bottom:4px">
+          <span class="text-secondary text-sm">${name.replace(/([A-Z])/g,' $1').trim()}</span>
+          <div class="flex-center" style="gap:8px">
+            <span class="mono text-sm">${out.score !== null ? out.score.toFixed(1) : '—'}</span>
+            ${verdictBadge(out.verdict)}
+          </div>
+        </div>
+        <div class="score-bar">
+          <div class="score-bar-fill" style="width:${Math.min(100,Math.abs(out.score||0))}%;
+               background:${scoreColor(out.score||50)};transition:width 0.8s ease"></div>
+        </div>
+        ${out.review_notes?.length ? `<div class="text-xs text-amber mt-4">⚠ ${out.review_notes[0]}</div>` : ''}
+      </div>`).join('');
+
+    // ── Radar chart ───────────────────────────────────────────────────────
+    renderRadarChart({
+      ta:        ta.score || 50,
+      volume:    vol.score || 50,
+      sentiment: sent.score || 0,
+      news:      (state.reviewed_outputs?.NewsFreshness || {}).score || 50,
+      signal:    signal.score || 50,
+    });
+
+    // ── Strategy grid ─────────────────────────────────────────────────────
+    const strategies = signal.data?.strategies || {};
+    strategyGrid.innerHTML = Object.entries(strategies).map(([key, s]) => `
+      <div class="metric-tile">
+        <div class="metric-label">${key.replace(/_/g,' ')}</div>
+        <div style="margin-top:10px">${signalBadge(s.signal)}</div>
+        <div class="mono text-sm mt-8">${s.score?.toFixed(1)} / 100</div>
+        <div class="text-xs text-muted mt-4">${s.rationale}</div>
+      </div>`).join('');
+
+    // ── Reviewer report ───────────────────────────────────────────────────
+    const review  = state.review_summary || {};
+    const health  = review.overall_health || 'HEALTHY';
+    const hClass  = health.toLowerCase();
+
+    document.getElementById('reviewer-health').className = `health-bar ${hClass}`;
+    document.getElementById('reviewer-health').innerHTML = `<span>● ${health}</span>`;
+
+    reviewerBody.innerHTML = `
+      <div class="flex" style="gap:12px;margin-bottom:16px">
+        <div class="metric-tile" style="flex:1;padding:12px">
+          <div class="metric-label">Total Agents</div>
+          <div class="metric-value mono" style="font-size:20px">${review.total_agents||0}</div>
+        </div>
+        <div class="metric-tile" style="flex:1;padding:12px">
+          <div class="metric-label">Passed</div>
+          <div class="metric-value mono text-green" style="font-size:20px">${review.passed||0}</div>
+        </div>
+        <div class="metric-tile" style="flex:1;padding:12px">
+          <div class="metric-label">Warned</div>
+          <div class="metric-value mono text-amber" style="font-size:20px">${review.warned||0}</div>
+        </div>
+        <div class="metric-tile" style="flex:1;padding:12px">
+          <div class="metric-label">Failed</div>
+          <div class="metric-value mono text-red" style="font-size:20px">${review.failed||0}</div>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Agent</th><th>Verdict</th><th>Weight</th><th>Notes</th></tr></thead>
+        <tbody>
+          ${Object.entries(review.per_agent||{}).map(([name, info]) => `
+            <tr>
+              <td class="text-sm">${name.replace(/([A-Z])/g,' $1').trim()}</td>
+              <td>${verdictBadge(info.verdict)}</td>
+              <td class="mono text-sm">${info.weight?.toFixed(1)}</td>
+              <td class="text-xs text-secondary">${info.notes?.join(' · ') || '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    document.getElementById('last-updated').textContent =
+      `Last updated: ${new Date().toLocaleTimeString('en-IN')}`;
+
+  } catch (e) {
+    showError(metricsRow, `Analysis failed: ${e.message}`);
+    Toast.error(e.message);
+  }
+}
+
+// ── Load index data on page load ──────────────────────────────────────────────
+async function loadIndexData() {
+  const indices = [
+    { id:'nifty',   ticker:'^NSEI',   valEl:'nifty-val',   chgEl:'nifty-chg'   },
+    { id:'bnifty',  ticker:'^NSEBANK', valEl:'bnifty-val',  chgEl:'bnifty-chg'  },
+    { id:'sensex',  ticker:'^BSESN',  valEl:'sensex-val',  chgEl:'sensex-chg'  },
+    { id:'niftyit', ticker:'^CNXIT',  valEl:'niftyit-val', chgEl:'niftyit-chg' },
+  ];
+  for (const idx of indices) {
+    try {
+      const data = await API.chart(idx.ticker, '5d', '1d');
+      const last = data.candles?.slice(-1)[0];
+      const prev = data.candles?.slice(-2)[0];
+      if (last && prev) {
+        const chg = ((last.close - prev.close) / prev.close * 100).toFixed(2);
+        document.getElementById(idx.valEl).textContent =
+          Number(last.close).toLocaleString('en-IN', {maximumFractionDigits:0});
+        document.getElementById(idx.chgEl).innerHTML = fmtChange(Number(chg));
+      }
+    } catch (e) { /* silent */ }
+  }
+}
+
+async function refreshDashboard() {
+  loadIndexData();
+  Toast.success('Dashboard refreshed');
+}
+
+loadIndexData();
+</script>
+{% endblock %}

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Stock Screener{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header flex-between" style="margin-top:16px">
+    <div>
+      <h1 class="page-title">Stock Screener</h1>
+      <p class="page-subtitle">Rank Nifty 50 stocks by AI-generated signals</p>
+    </div>
+  </div>
+
+  <!-- Screener controls -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body" style="padding:16px 20px">
+      <div class="flex" style="gap:14px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="metric-label" style="display:block;margin-bottom:4px">Strategy</label>
+          <select id="strategy-select" class="form-control" style="width:180px">
+            <option value="all">All Strategies</option>
+            <option value="long_term">Long-Term</option>
+            <option value="swing_trading">Swing Trading</option>
+            <option value="short_term">Short-Term</option>
+          </select>
+        </div>
+        <div>
+          <label class="metric-label" style="display:block;margin-bottom:4px">Top N</label>
+          <select id="topn-select" class="form-control" style="width:100px">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+          </select>
+        </div>
+        <div>
+          <label class="metric-label" style="display:block;margin-bottom:4px">Universe</label>
+          <select id="universe-select" class="form-control" style="width:160px">
+            <option value="nifty50">Nifty 50</option>
+            <option value="custom">Default Watchlist</option>
+          </select>
+        </div>
+        <div style="margin-top:20px">
+          <button class="btn btn-primary" onclick="runScreener()">
+            ⚡ Run Screener
+          </button>
+        </div>
+        <div id="screener-status" class="text-secondary text-sm" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="screener-title">Results</span>
+      <span id="screener-count" class="text-secondary text-sm"></span>
+    </div>
+    <div id="screener-results">
+      <div class="loading-overlay">
+        <div class="text-secondary text-sm">Configure and click Run Screener to begin</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const NIFTY50 = [
+  'RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','ICICIBANK.NS',
+  'HINDUNILVR.NS','ITC.NS','SBIN.NS','BHARTIARTL.NS','KOTAKBANK.NS',
+  'LT.NS','BAJFINANCE.NS','HCLTECH.NS','WIPRO.NS','ASIANPAINT.NS',
+  'AXISBANK.NS','MARUTI.NS','SUNPHARMA.NS','TITAN.NS','ULTRACEMCO.NS',
+];
+
+async function runScreener() {
+  const strategy = document.getElementById('strategy-select').value;
+  const topN     = parseInt(document.getElementById('topn-select').value);
+  const universe = document.getElementById('universe-select').value;
+  const resultsEl = document.getElementById('screener-results');
+  const statusEl  = document.getElementById('screener-status');
+
+  const tickers = universe === 'nifty50' ? NIFTY50 : NIFTY50.slice(0,10);
+
+  showLoading(resultsEl, `Screening ${tickers.length} stocks — this takes ~60 seconds…`);
+  statusEl.textContent = `Analysing ${tickers.length} tickers…`;
+  document.getElementById('screener-title').textContent = `Results — ${strategy.replace(/_/g,' ')}`;
+
+  try {
+    const data = await API.screener({ tickers, strategy, top_n: topN });
+    const rows = data.results || [];
+
+    document.getElementById('screener-count').textContent = `${rows.length} stocks`;
+    statusEl.textContent = `Completed in ${rows.reduce((a,r)=>a+r.duration_s,0).toFixed(0)}s total`;
+
+    if (!rows.length) {
+      resultsEl.innerHTML = '<div class="loading-overlay"><div class="text-muted">No results returned</div></div>';
+      return;
+    }
+
+    const scoreKey = strategy === 'all' ? 'score'
+      : strategy === 'long_term' ? 'long_term_score'
+      : strategy === 'swing_trading' ? 'swing_trading_score'
+      : 'short_term_score';
+
+    resultsEl.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>#</th>
+            <th>Ticker</th>
+            <th>Signal</th>
+            <th>Score</th>
+            <th>Price</th>
+            <th>Change</th>
+            <th>TA</th>
+            <th>Sentiment</th>
+            <th>Volume</th>
+            <th>Health</th>
+            <th>Action</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((r, i) => `
+              <tr>
+                <td class="mono text-muted">${i + 1}</td>
+                <td><span class="ticker-tag">${r.ticker}</span></td>
+                <td>${signalBadge(r.signal)}</td>
+                <td>
+                  <div class="flex-center" style="gap:8px">
+                    <span class="mono">${(r[scoreKey]||0).toFixed(1)}</span>
+                    <div class="score-bar" style="width:60px">
+                      <div class="score-bar-fill" style="width:${Math.min(100,r[scoreKey]||0)}%;background:${scoreColor(r[scoreKey]||0)}"></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">${fmtPrice(r.price)}</td>
+                <td>${fmtChange(r.change_pct)}</td>
+                <td class="mono text-sm">${(r.ta_score||0).toFixed(0)}</td>
+                <td>${fmtSentiment(r.sentiment_score)}</td>
+                <td class="mono text-sm">${(r.volume_score||0).toFixed(0)}</td>
+                <td><span class="health-bar ${(r.review_health||'').toLowerCase()}" style="padding:2px 8px;font-size:10px">${r.review_health||'—'}</span></td>
+                <td>
+                  <a href="/chart?ticker=${r.ticker}" class="btn btn-ghost btn-sm">View</a>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    showError(resultsEl, `Screener failed: ${e.message}`);
+    Toast.error(e.message);
+  }
+}
+</script>
+{% endblock %}

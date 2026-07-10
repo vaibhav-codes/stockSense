@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Chart Terminal{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header flex-between" style="margin-top:16px">
+    <div>
+      <h1 class="page-title">Chart Terminal</h1>
+      <p class="page-subtitle">Interactive candlestick charts with TA overlays</p>
+    </div>
+  </div>
+
+  <!-- Controls bar -->
+  <div class="card mb-16" style="margin-bottom:16px">
+    <div class="card-body" style="padding:12px 20px">
+      <div class="flex" style="gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="position:relative;flex:1;max-width:280px">
+          <input id="ticker-input" class="form-control" placeholder="Ticker e.g. TCS.NS"
+                 onkeydown="if(event.key==='Enter') loadChart()"
+                 value="{{ prefill_ticker | default('TCS.NS') }}">
+          <div id="ticker-suggestions" class="suggestions-dropdown"></div>
+        </div>
+        <select id="period-select" class="form-control" style="width:110px" onchange="loadChart()">
+          <option value="1mo">1 Month</option>
+          <option value="3mo">3 Months</option>
+          <option value="6mo" selected>6 Months</option>
+          <option value="1y">1 Year</option>
+          <option value="2y">2 Years</option>
+        </select>
+        <select id="interval-select" class="form-control" style="width:100px" onchange="loadChart()">
+          <option value="1d" selected>Daily</option>
+          <option value="1wk">Weekly</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadChart()">Load Chart</button>
+        <button class="btn btn-ghost btn-sm" onclick="runTA()">Run TA Analysis</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart + TA panel -->
+  <div class="grid-2" style="grid-template-columns:1fr 320px;gap:16px;margin-bottom:16px">
+
+    <!-- Charts column -->
+    <div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-header">
+          <span class="card-title" id="chart-ticker-label">—</span>
+          <div class="flex-center" style="gap:12px">
+            <span id="chart-price" class="mono fw-600"></span>
+            <span id="chart-change"></span>
+          </div>
+        </div>
+        <div id="chart-container" style="height:380px;padding:8px">
+          <div class="loading-overlay">
+            <div class="spinner"></div>
+            <div class="text-secondary text-sm">Enter a ticker and click Load Chart</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">RSI (14)</span></div>
+        <div id="rsi-container" style="height:120px;padding:4px 8px"></div>
+      </div>
+    </div>
+
+    <!-- TA sidebar -->
+    <div>
+      <div class="card" style="height:100%">
+        <div class="card-header"><span class="card-title">Technical Analysis</span></div>
+        <div id="ta-panel" class="card-body">
+          <div class="text-secondary text-sm">Run TA Analysis to see indicators</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.suggestions-dropdown{position:absolute;top:100%;left:0;right:0;background:#131927;border:1px solid rgba(255,255,255,0.1);border-radius:6px;margin-top:4px;z-index:100;overflow:hidden}
+.suggestion-item{padding:8px 12px;font-family:var(--font-data);font-size:12px;color:var(--text-primary);cursor:pointer}
+.suggestion-item:hover{background:var(--bg-hover);color:var(--accent-green)}
+.ind-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.ind-row:last-child{border-bottom:none}
+.ind-name{color:var(--text-secondary)}
+.ind-val{font-family:var(--font-data);font-weight:500}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadChart() {
+  const ticker   = document.getElementById('ticker-input').value.trim().toUpperCase();
+  const period   = document.getElementById('period-select').value;
+  const interval = document.getElementById('interval-select').value;
+  if (!ticker) return;
+
+  document.getElementById('chart-ticker-label').innerHTML =
+    `<span class="ticker-tag">${ticker}</span>`;
+
+  await renderCandlestickChart(ticker, period, 'chart-container');
+  await renderRSIChart(ticker, period, 'rsi-container');
+
+  // Update price header
+  try {
+    const data = await API.chart(ticker, period, interval);
+    const last  = data.candles?.slice(-1)[0];
+    const prev  = data.candles?.slice(-2)[0];
+    if (last) {
+      document.getElementById('chart-price').textContent = fmtPrice(last.close).replace('<span style="color:#00d4aa">', '').replace('</span>','');
+      if (prev) {
+        const chg = ((last.close - prev.close) / prev.close * 100);
+        document.getElementById('chart-change').innerHTML = fmtChange(chg);
+      }
+    }
+  } catch(e) {}
+}
+
+async function runTA() {
+  const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+  const panel  = document.getElementById('ta-panel');
+  if (!ticker) { Toast.warning('Enter a ticker first'); return; }
+  showLoading(panel, 'Computing indicators…');
+  try {
+    const out = await API.ta(ticker);
+    const ind = out.data?.indicators || {};
+    const sig = out.data?.signals    || {};
+    const det = out.data?.detail     || {};
+    const SIGNAL_ICON = { 1: '▲', '-1': '▼', '0': '—' };
+
+    panel.innerHTML = `
+      <div style="margin-bottom:14px">
+        ${signalBadge(out.label)}
+        <span class="mono text-sm ml-8" style="margin-left:8px">${out.score?.toFixed(1)} / 100</span>
+      </div>
+
+      <div class="ind-row">
+        <span class="ind-name">Buy Signals</span>
+        <span class="ind-val text-green">${det.buy_signals || 0}</span>
+      </div>
+      <div class="ind-row">
+        <span class="ind-name">Sell Signals</span>
+        <span class="ind-val text-red">${det.sell_signals || 0}</span>
+      </div>
+      <div class="ind-row" style="margin-bottom:12px">
+        <span class="ind-name">Neutral</span>
+        <span class="ind-val text-muted">${det.neutral || 0}</span>
+      </div>
+
+      ${[
+        ['RSI (14)',       ind.rsi?.toFixed(1),      sig.rsi],
+        ['MACD Hist',     ind.macd_hist?.toFixed(4), sig.macd_momentum],
+        ['Stochastic %K', ind.stoch_k?.toFixed(1),   sig.stochastic],
+        ['ADX (14)',      ind.adx?.toFixed(1),        sig.adx_trend],
+        ['EMA 9/20',      ind.ema_9?.toFixed(0) + ' / ' + ind.ema_20?.toFixed(0), sig.ema_9_20],
+        ['EMA 20/50',     ind.ema_20?.toFixed(0) + ' / ' + ind.ema_50?.toFixed(0), sig.ema_20_50],
+        ['Williams %R',   ind.williams_r?.toFixed(1), sig.williams_r],
+        ['52W High',      '₹' + ind.week52_high,      null],
+        ['52W Low',       '₹' + ind.week52_low,       null],
+      ].map(([name, val, signal]) => `
+        <div class="ind-row">
+          <span class="ind-name">${name}</span>
+          <div class="flex-center" style="gap:6px">
+            <span class="ind-val">${val || '—'}</span>
+            ${signal !== undefined && signal !== null
+              ? `<span style="color:${signal===1?'#00d4aa':signal===-1?'#fc4a4a':'#8896b0'};font-size:10px">${SIGNAL_ICON[signal]}</span>`
+              : ''}
+          </div>
+        </div>`).join('')}`;
+
+  } catch(e) {
+    showError(panel, e.message);
+  }
+}
+
+// Auto-load chart on page load
+window.addEventListener('DOMContentLoaded', () => {
+  loadChart();
+});
+</script>
+{% endblock %}
