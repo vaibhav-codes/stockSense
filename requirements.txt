@@ -1,0 +1,42 @@
+# =============================================================================
+#  StockSense — Python Dependencies
+#  Install with:  pip install -r requirements.txt
+#  Recommended:   Python 3.10+
+# =============================================================================
+
+# ── Web Framework ─────────────────────────────────────────────────────────────
+flask>=3.0.0
+python-dotenv>=1.0.0
+
+# ── Data & Finance ────────────────────────────────────────────────────────────
+yfinance>=0.2.36
+pandas>=2.1.0
+numpy>=1.26.0
+pandas-ta>=0.3.14b0          # technical indicators (RSI, MACD, BB, ADX …)
+
+# ── Machine Learning ──────────────────────────────────────────────────────────
+scikit-learn>=1.4.0
+lightgbm>=4.3.0              # signal fusion model
+transformers>=4.40.0         # FinBERT sentiment model
+torch>=2.2.0                 # PyTorch backend for transformers (CPU build)
+# shap>=0.45.0               # Optional: real SHAP values (slower install)
+
+# ── LLM Fallback ─────────────────────────────────────────────────────────────
+groq>=0.9.0                  # Groq LLM API client (llama3-70b-8192)
+
+# ── News & HTTP ───────────────────────────────────────────────────────────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0       # HTML scraping for Indian news sites
+lxml>=5.1.0                  # Fast HTML parser for BeautifulSoup
+
+# ── Scheduler & Concurrency ───────────────────────────────────────────────────
+apscheduler>=3.10.4          # Market-hours auto-refresh scheduler
+pytz>=2024.1                 # IST timezone support
+
+# ── Caching (optional Redis) ──────────────────────────────────────────────────
+# redis>=5.0.0               # Uncomment if USE_REDIS=True in .env
+# hiredis>=2.3.2             # Faster Redis protocol parser
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dateutil>=2.9.0
+tqdm>=4.66.0                 # Progress bars during model downloads
